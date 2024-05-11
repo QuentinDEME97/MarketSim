@@ -10,47 +10,55 @@ import datetime
 
 import pickle
 
-PRICE_ADJUST_MODE = 'chance'
+PRICE_ADJUST_MODE = 'gauss'
 PRICE_ADJUST_CHANCE = 1
 PRICE_ADJUST_MEAN = 1
 PRICE_ADJUST_DEV = 0.5
 PRICE_CONCESSION = PRICE_ADJUST_MEAN
 MAX_PRICE = 50
+AGENT_ID = 0
 
 SIM_DIR = 'C:\\Users\\demeq\\OneDrive\\Documents\\repositories\\ForAIx'
 
-
-class BuyerSeller:
-    def __init__(self, price_limit, interaction_mode, initial_price, type) -> None:
-        self.id = uuid.uuid4()
+class Agent(object):
+    """docstring for Agent."""
+    def __init__(
+        self,
+        type = 'buyer',
+        interaction_mode = None,
+        price_limit = None,
+        initial_price = None, #For setting market expectations,
+        id = None,
+        money = 0
+    ):
+        super().__init__()
+        self.id = id
         self.type = type
+        self.money = money
+        if interaction_mode == None:
+            raise Warning('Agent needs interaction_mode')
+        self.interaction_mode = interaction_mode
 
         if price_limit == None:
-            raise Warning('Everyone has a price !')
+            raise Warning('Everyone has a price!')
         self.price_limit = price_limit
 
-        if self.type == 'buyer':
-            initial_price = min(initial_price, self.price_limit)
-        elif self.type == 'seller':
-            initial_price = max(initial_price, self.price_limit)
+        #determine initial goal price
+        if initial_price == None:
+            initial_price = self.price_limit
+        else:
+            if self.type == 'buyer':
+                initial_price = min(initial_price, self.price_limit)
+            elif self.type == 'seller':
+                initial_price = max(initial_price, self.price_limit)
 
-        self.goal_prices = [initial_price] #Initial value
+        self.goal_prices = [initial_price] #initial value
         self.meetings = []
-
-    def __repr__(self):
-        difference = self.goal_prices[-1] - self.goal_prices[0]
-        percentage_diff = (difference / self.goal_prices[0]) * 100
-        prefix = ''
-        if self.type == 'buyer':
-            prefix = 'B'
-        if self.type == 'seller':
-            prefix = 'S'
-        return '{}[{}] - I({}) L({}) D({})'.format(prefix, self.id,  self.initial_price, self.price_limit, percentage_diff)
 
     def adjust_price(self, success = None, set_price = None, edit_last = False):
         if edit_last == False:
             if set_price != None:
-                if self.type == 'buyer':
+                if self.type == 'buyer': #and self.interaction_mode != 'seller_asks_buyer_decides':
                     self.goal_prices.append(min(set_price, self.price_limit))
                 if self.type == 'seller':
                     self.goal_prices.append(max(set_price, self.price_limit))
@@ -58,40 +66,45 @@ class BuyerSeller:
                 if success == None:
                     raise Warning('Need to know outcome to adjust price')
                 if PRICE_ADJUST_MODE == 'gauss':
+                    #1, with just a touch of variability to avoid weird states
                     adjust_amount = gauss(PRICE_ADJUST_MEAN, PRICE_ADJUST_DEV)
                 if PRICE_ADJUST_MODE == 'chance':
-                    if random() < PRICE_ADJUST_MEAN:
+                    if random() < PRICE_ADJUST_CHANCE:
                         adjust_amount = PRICE_ADJUST_MEAN
                     else:
                         adjust_amount = 0
                 if success == True:
-                    if self.type == 'buyer':
+                    if self.type == 'buyer': #and self.interaction_mode != 'seller_asks_buyer_decides':
                         self.goal_prices.append(self.goal_prices[-1] - adjust_amount)
                     if self.type == 'seller':
                         self.goal_prices.append(self.goal_prices[-1] + adjust_amount)
                 if success == False:
-                    if self.type == 'buyer':
+                    if self.type == 'buyer': #and self.interaction_mode != 'seller_asks_buyer_decides':
                         self.goal_prices.append(min(self.goal_prices[-1] + adjust_amount, self.price_limit))
                     if self.type == 'seller':
                         self.goal_prices.append(max(self.goal_prices[-1] - adjust_amount, self.price_limit))
         else:
             if set_price != None:
-                if self.type == 'buyer':
+                if self.type == 'buyer': #and self.interaction_mode != 'seller_asks_buyer_decides':
                     self.goal_prices[-1] = min(set_price, self.price_limit)
                 if self.type == 'seller':
                     self.goal_prices[-1] = max(set_price, self.price_limit)
             else:
                 raise Warning("Hmm. I don't think it makes sense to edit the " + \
                                 "last goal price based on success or failure")
-            
-class Meeting(object):
+        simulation_results['goal_price'].append(self.goal_prices[-1])
+        simulation_results['price_limit'].append(self.price_limit)
+        simulation_results['agent'].append(self.type + '_' + str(self.id))
+        simulation_results['agent_type'].append(self.type)
 
+class Meeting(object):
+    """docstring for Meeting."""
     def __init__(self,
-                 buyer = None,
-                 seller = None,
-                 interaction_mode = None,
-                 concession_size = 0,
-                 session_index = None
+        buyer = None,
+        seller = None,
+        interaction_mode = None,
+        concession_size = 0,
+        session_index = None
     ):
         super().__init__()
         self.buyer = buyer
@@ -100,11 +113,13 @@ class Meeting(object):
         self.seller.meetings.append(self)
         self.session_index = session_index
         if self.session_index == None:
-            raise Warning("Meeting needs session index")
-        
+            raise Warning('Meeting needs session index')
+
         if self.seller == None or self.buyer == None:
             raise Warning('Meeting is missing a buyer or a seller')
-        
+
+
+
         bid = min(self.buyer.goal_prices[-1] + concession_size, self.buyer.price_limit)
         ask = max(self.seller.goal_prices[-1] - concession_size, self.seller.price_limit)
 
@@ -138,7 +153,7 @@ class Meeting(object):
                             self.transaction_price = uniform(minimum, maximum + 1)
                 else:
                     raise Warning('Interaction mode not implemented')
-                
+
 class Session(object):
     """docstring for Session."""
     def __init__(
@@ -444,6 +459,9 @@ class Session(object):
                 self.rounds = self.rounds + concession_rounds
                 #print(len(self.rounds))
 
+
+
+
     def get_stats(self):
         total_price = 0
         self.num_transactions = 0
@@ -462,10 +480,6 @@ class Session(object):
             self.avg_price = None
         #Jankopotamus
         self.next_expected_price = self.avg_price
-        # simulation_results['stats_num_transactions'].append(self.num_transactions)
-        # simulation_results['stats_failed_meetings'].append(self.failed_meetings)
-        # simulation_results['stats_avg_prices'].append(self.avg_price)
-        # simulation_results['stats_next_expected_prices'].append(self.next_expected_price)
 
 class Market(object):
     """docstring for Market."""
@@ -540,36 +554,49 @@ class Market(object):
         seller_limits = None
     ):
         new_agent_list = []
+        agents_counter = 0
         if num_buyers != None:
             for i in range(num_buyers):
-                new_buyer = Buyer(
+                new_buyer = Agent(
+                    type = 'buyer',
                     price_limit = self.get_point_on_demand_curve(shape = 'linear'),
                     initial_price = self.initial_price,
-                    interaction_mode = self.interaction_mode
+                    interaction_mode = self.interaction_mode,
+                    id = agents_counter
                 )
                 new_agent_list.append(new_buyer)
+                agents_counter += 1
             for i in range(num_sellers):
-                new_seller = Seller(
+                new_seller = Agent(
+                    type = 'seller',
                     price_limit = self.get_point_on_supply_curve(shape = 'linear'),
                     initial_price = self.initial_price,
-                    interaction_mode = self.interaction_mode
+                    interaction_mode = self.interaction_mode,
+                    id = agents_counter
                 )
                 new_agent_list.append(new_seller)
+                agents_counter += 1
         elif buyer_limits != None:
             for limit in buyer_limits:
-                new_buyer = Buyer(
+                new_buyer = Agent(
+                    type = 'buyer',
                     interaction_mode = self.interaction_mode,
                     initial_price = self.initial_price,
-                    price_limit = limit
+                    price_limit = limit,
+                    id = agents_counter
                 )
                 new_agent_list.append(new_buyer)
+                agents_counter += 1
             for limit in seller_limits:
-                new_seller = Seller(
+                new_seller = Agent(
+                    type = 'seller',
                     interaction_mode = self.interaction_mode,
                     initial_price = self.initial_price,
-                    price_limit = limit
+                    price_limit = limit,
+                    id = agents_counter
                 )
                 new_agent_list.append(new_seller)
+                agents_counter += 1
 
         self.agents_lists.append(new_agent_list)
 
@@ -594,9 +621,9 @@ class Market(object):
             for j in range(index):
                 agent.goal_prices.insert(0, None)
 
-        # print(' Num agents ' + str(len(self.agents_lists[-1])))
+        print(' Num agents ' + str(len(self.agents_lists[-1])))
         self.agents_lists[-1] += new_agents
-        # print(' Num agents ' + str(len(self.agents_lists[-1])))
+        print(' Num agents ' + str(len(self.agents_lists[-1])))
 
         buyers = []
         sellers = []
@@ -676,26 +703,6 @@ class Market(object):
                 pickle.dump(self, outfile, pickle.HIGHEST_PROTOCOL)
         else:
             raise Warning(str(result) + " already exists")
-    
-    def __repr__(self):
-        print(self.agents_lists)
-        res = ""
-        for agent in self.agents_lists:
-            res += str(agent) + "\n"
-        return res
-
-
-class Buyer(BuyerSeller):
-    
-    def __init__(self, price_limit = None, interaction_mode = None, initial_price = None):
-        super().__init__(price_limit, interaction_mode, initial_price, 'buyer')
-        self.initial_price = initial_price
-
-class Seller(BuyerSeller):
-    def __init__(self, price_limit = None, interaction_mode = None, initial_price = None):
-        super().__init__(price_limit, interaction_mode, initial_price, 'seller')
-        self.initial_price = initial_price
-
 simulation_results = {
     # 'stats_num_transactions': [],
     # 'stats_failed_meetings': [],
@@ -703,49 +710,108 @@ simulation_results = {
     # 'stats_next_expected_prices': [],
     'epoch': [],
     'agent': [],
-    'last_price': []
+    'goal_price': [], 
+    'agent_type': [],
+    'price_limit': []
+}
+
+simulation_transactions = {
+    'transaction_price': [],
+    'buyer_id': [],
+    'seller_id': [],
+    'seller_goal_price': [],
+    'buyer_goal_price': [],
+    'session_index': []
 }
 
 def main():
     sim  = Market(
                 #num_initial_buyers = 1,
                 #num_initial_sellers = 1,
-                interaction_mode = 'negotiate',
-                #interaction_mode = 'walk',
-                buyer_limits = [50, 45],
-                seller_limits = [100, 100, 25],
+                # interaction_mode = 'negotiate',
+                interaction_mode = 'walk',
+                # buyer_limits = [0.90, 2, 0.85, 1.15],
+                # seller_limits = [1.20, 1, 0.84, 1],
+                buyer_limits = [0.90, 2],
+                seller_limits = [1.20, 1, 2, 1.4],
                 # interaction_mode = 'seller_asks_buyer_decides',
-                initial_price = 1,
+                initial_price = 1.10,
                 session_mode = 'rounds_w_concessions',
-                #session_mode = 'rounds',
-                #session_mode = 'one_shot',
+                # session_mode = 'rounds',
+                # session_mode = 'one_shot',
                 fluid_sellers = False
             )
     num_sessions = 1
-    num_epoch = 500
+    num_epoch = 100
     for epoch in range(num_epoch):
-        print("Running epoch {}".format(epoch))
+        # print("Running epoch {}".format(epoch))
         for i in range(num_sessions):
             new_agents = []
             save = False
             if i == num_sessions - 1:
                 save = False
                 sim.new_session(save = save, new_agents = new_agents)
-        print("Number of agents", len(sim.agents_lists))
-        for agent in sim.agents_lists[-1]:
-            print(agent)
-            simulation_results['agent'].append(str(agent.id))
-            simulation_results['last_price'].append(agent.goal_prices[-1])
-            simulation_results['epoch'].append(epoch)
+    return sim
+
+def compute_stats(simulation):
+    for i in range(len(simulation.sessions)):
+        session = simulation.sessions[i]
+        for meetings in session.rounds:
+            for meeting in meetings:
+                if meeting.transaction_price:
+                    simulation_transactions['buyer_id'].append('Buyer_'+str(meeting.buyer.id))
+                    simulation_transactions['seller_id'].append('Seller_'+str(meeting.seller.id))
+                    simulation_transactions['transaction_price'].append(meeting.transaction_price)
+                    simulation_transactions['session_index'].append(i)
+                    simulation_transactions['buyer_goal_price'].append(meeting.buyer.goal_prices[i])
+                    simulation_transactions['seller_goal_price'].append(meeting.seller.goal_prices[i])
+    for i in range(len(simulation.agents_lists)):
+        agent_list = simulation.agents_lists[i]
+        for agent in agent_list:
+            # simulation_results['agent'].append(agent.type + str(agent.id))
+            # simulation_results['agent_type'].append(agent.type)
+            simulation_results['epoch'].append(i)
+            # simulation_results['goal_price'].append(agent.goal_prices[i])
+            # simulation_results['price_limit'].append(agent.price_limit)
+
 
 import plotly.express as px
+import plotly.graph_objects as go
 
 if __name__ == "__main__":
-    main()
-    print(len(simulation_results['agent']), len(simulation_results['epoch']), len(simulation_results['last_price']))
+    sim = main()
+    stats = compute_stats(sim)
+    for key in simulation_transactions:
+        print("For key", key, len(simulation_transactions[key]))
+    transactions_df = pd.DataFrame.from_dict(simulation_transactions)
+    print('=== results ===')
     for key in simulation_results:
         print("For key", key, len(simulation_results[key]))
-    df = pd.DataFrame.from_dict(simulation_results)
-    fig = px.line(df, x = 'epoch', y = 'last_price', color = 'agent', title='Price goal evolution')
+    results_df = pd.DataFrame.from_dict(simulation_results)
+    seller = transactions_df['seller_id'].unique()[0]
+    seller_df = transactions_df[transactions_df['seller_id'] == seller]
+    t_p = go.Scatter(x=seller_df['session_index'], y=seller_df['transaction_price'], mode='lines', name='Transaction Price')
+    g_p = go.Scatter(x=seller_df['session_index'], y=seller_df['seller_goal_price'], mode='lines', name='Goal Price')
+    # Create figure
+    fig = go.Figure()
+
+    # Add traces to figure
+    fig.add_trace(t_p)
+    fig.add_trace(g_p)
+
+    # Update layout (optional)
+    fig.update_layout(title='Transaction and goal for seller {}'.format(seller), xaxis_title='X-axis', yaxis_title='Y-axis')
+
+    # Show figure
+    fig.show()
+
+    fig = px.line(results_df, x='epoch', y='goal_price', color='agent', title='Goal Price Evolution')
+    fig.show()
+
+    fig = px.line(results_df, x='epoch', y='price_limit', color='agent', title='Price limit evolution')
+    fig.show()
+    ###############
+
+    fig = px.box(transactions_df, x='session_index', y='transaction_price', title='Transactions Price Evolution')
     fig.show()
     
