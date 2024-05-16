@@ -44,8 +44,20 @@ def main():
     buying_unit, quantity = baker.can_or_should_buy_wheat(wheat_kg.sim_prices[0], wheat_t.sim_prices[0])
     wheat_price = wheat_t.sim_prices[0] if buying_unit == 't' else wheat_kg.sim_prices[0]
     baker.buy_wheat(wheat_price, buying_unit, quantity)
+    print(baker.checking_account)
+    # Water
+    buying_unit, quantity = baker.can_or_should_buy_water(water.sim_prices[0])
+    baker.buy_water(water.sim_prices[0], buying_unit, quantity)
     print(baker)
     print(baker.checking_account)
-
+    # Produce flour
+    baker.produce_flour()
+    # Produce Bread
+    bread_amount = baker.bread_stock.balance
+    print(baker)
+    baker.produce_bread()
+    print('Produced {} bread'.format(baker.bread_stock.balance - bread_amount))
+    print('Baker could get {}'.format(baker.bread_stock.balance*baker.price_limit))
+    print(baker)
 if __name__ == '__main__':
     main()

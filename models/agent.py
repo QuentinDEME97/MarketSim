@@ -6,30 +6,54 @@ import uuid
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-class BankAcount:
+class QuantityManager:
 
-    def __init__(self, holder=None, balance=0):
+    def __init__(self, holder=None, balance=0, label='QuantityManager', unit=''):
         if holder is None:
-            raise RuntimeWarning('BankAccount should have a holder')
+            raise RuntimeWarning('Stock should have a holder')
         self.holder = holder
         self.balance = balance
         self.transactions = []
+        self.label = label
+        self.unit = unit
         self.id = uuid.uuid4()
 
-    def income(self, period, amount):
+    def add(self, period, amount):
         if period is None or amount is None:
             raise RuntimeError('Period and amound should not be None')
         self.balance += amount
         self.transactions.append((period, amount))
-    
-    def pay(self, period, amount):
+
+    def remove(self, period, amount):
         if period is None or amount is None:
             raise RuntimeError('Period and amound should not be None')
         self.balance -= amount
         self.transactions.append((period, amount))
 
     def __repr__(self):
-        return '{} balance: {}$ number_of_transactions: {}'.format(self.id, self.balance, len(self.transactions))
+        return '{} balance: {}{} number_of_transactions: {}'.format(self.id, self.balance, self.unit, len(self.transactions))
+class Stock(QuantityManager):
+
+    def __init__(self, holder=None, balance=0, quantity_label='Stock', unit='u'):
+        super().__init__(holder=holder, balance=balance, label=quantity_label, unit=unit)
+
+    def add_to_stock(self, period, amount):
+        super().add(period, amount)
+
+    def remove_from_stock(self, period, amount):
+        super().remove(period, amount)
+
+
+class BankAcount(QuantityManager):
+
+    def __init__(self, holder=None, balance=0, quantity_label='Stock', unit='u'):
+        super().__init__(holder=holder, balance=balance, label=quantity_label, unit=unit)
+
+    def income(self, period, amount):
+        super().add(period, amount)
+
+    def pay(self, period, amount):
+        super().remove(period, amount)
 
 class Agent(object):
     """docstring for Agent."""
@@ -267,7 +291,7 @@ class Baker(Seller):
                  wheat_stock_capacity=100,
                  flour_stock_capacity=100
                  ):
-        self.bread_stock = [bread_stock]
+        self.bread_stock = Stock(holder=self, quantity_label='Breads')
         self.wheat_stock = wheat_stock
         self.flour_stock = flour_stock
         self.water_stock = water_stock
@@ -288,7 +312,7 @@ class Baker(Seller):
     def produce_flour(self):
         flour_to_produce = self.wheat_stock * 0.80
         flour_to_add = min(flour_to_produce, self.flour_stock_capacity - self.flour_stock)
-        print("Flour to add",flour_to_add)
+        logging.debug('Can produce {}kg flour'.format(flour_to_add))
         self.flour_stock += flour_to_add
         self.wheat_stock = 0
 
@@ -297,10 +321,10 @@ class Baker(Seller):
         if self.flour_stock >= 0.500 and self.water_stock >= 0.300:
             # We can produce
             bread_to_produce = min(self.flour_stock // 0.500, self.water_stock // 0.300)
-            self.bread_stock.append(self.bread_stock[-1] + bread_to_produce)
+            self.bread_stock.add_to_stock(1, bread_to_produce)
             self.flour_stock -= 0.500 * bread_to_produce
             self.water_stock -= 0.300 * bread_to_produce
-            self.adjust_bread_price()
+            # self.adjust_bread_price()
 
     def adjust_bread_price(self):
         bread_price_production = (self.wheat_prices[-1] * 0.80) * 0.500 + self.water_prices[-1] * 0.300
@@ -337,10 +361,13 @@ class Baker(Seller):
         return self.wheat_stock_capacity - self.wheat_stock >= 1000 and t_price <= self.checking_account.balance
 
     def can_or_should_buy_water(self, water_price):
-        # Baker can only buy by 100 units
-        if self.water_stock < self.water_stock_capacity:
-            return (self.money[-1] * 0.25) >= water_price #and self.water_stock // 300 <= 3
-        return False
+        water_quantity_able_to_stock = self.water_stock_capacity - self.water_stock
+        water_quantity_able_to_buy = (self.checking_account.balance // water_price)
+        quantity = min(water_quantity_able_to_buy, water_quantity_able_to_stock)
+        unit = 'l'
+        logging.debug(
+            'Able to buy {}{} and can stock {}'.format(water_quantity_able_to_buy, unit, water_quantity_able_to_stock))
+        return unit, quantity
     
     def buy_wheat(self, wheat_price, unit, quantity):
         logging.debug('Baker can buy in {} ({}u for {}$)'.format(unit, quantity, wheat_price))
@@ -351,19 +378,13 @@ class Baker(Seller):
             self.wheat_stock += quantity * WHEAT_MIN_KG_BUY_QUANTITY
             self.checking_account.pay(1, quantity * wheat_price)
     
-    def buy_water(self, water_price):
-        water_could_buy = (self.money[-1] * 0.25) // water_price
-        water_to_buy = min(self.water_stock_capacity - self.water_stock, abs(self.water_stock_capacity - water_could_buy))
-        print("TO BUY", water_to_buy, water_could_buy, self.water_stock, self.water_stock_capacity)
-        self.money.append(self.money[-1] - water_to_buy * water_price)
-        self.water_stock += water_to_buy
-        print("STOCK WATER", self.water_stock)
-        self.water_prices.append(water_price)
+    def buy_water(self, water_price, unit, quantity):
+        logging.debug('Baker can buy in {}{} for {}$ (total of {})'.format(quantity, unit, water_price, quantity * water_price))
+        self.water_stock += quantity
+        self.checking_account.pay(1, quantity * water_price)
 
     def sell_bread(self):
-        while(self.bread_stock[-1] != 0):
-            self.money.append(self.money[-1] + self.price_limit)
-            self.bread_stock.append(self.bread_stock[-1] - 1)
+        self.checking_account.pay(self.price_limit)
 
     def __repr__(self):
-        return 'Baker ({}) : {}w {}f {}wt {}$'.format(self.bread_stock[-1], self.wheat_stock, self.flour_stock, self.water_stock, self.checking_account.balance, self.price_limit)
+        return 'Baker ({}) : {}w {}f {}wt {}$'.format(self.bread_stock.balance, self.wheat_stock, self.flour_stock, self.water_stock, self.checking_account.balance, self.price_limit)
