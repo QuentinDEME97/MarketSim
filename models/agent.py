@@ -366,11 +366,12 @@ class Baker(Seller):
         wheat_price_t (float): Wheat price for 1 t
         '''
         wheat_quantity_able_to_stock = self.wheat_stock_capacity - self.wheat_stock
+        quantity = 1
         if self.has_capacity_to_buy_ton(wheat_price_t):
             wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_t)
             quantity = min(wheat_quantity_able_to_buy, wheat_quantity_able_to_stock // 1000)
             unit = 't'
-        else:
+        if not self.has_capacity_to_buy_ton(wheat_price_t) or quantity * wheat_price_t > self.checking_account.balance:
             wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_kg)
             quantity = min(wheat_quantity_able_to_buy, wheat_quantity_able_to_stock) // WHEAT_MIN_KG_BUY_QUANTITY
             unit = 'kg'
@@ -390,7 +391,8 @@ class Baker(Seller):
         return unit, quantity
     
     def buy_wheat(self, wheat_price, unit, quantity):
-        logging.debug('Baker can buy in {} ({}u for {}$)'.format(unit, quantity, wheat_price))
+        logging.debug('Baker is buying in {} ({}u for {}$)'.format(unit, quantity, wheat_price))
+        logging.debug('Baker account {}$'.format(self.checking_account.balance))
         if quantity != 0:
             if unit == 't':
                 self.wheat_stock += quantity * 1000
@@ -401,12 +403,14 @@ class Baker(Seller):
                 self.checking_account.pay(self.age_day, quantity * wheat_price)
                 self.wheat_prices.append(wheat_price / (quantity * WHEAT_MIN_KG_BUY_QUANTITY))
             logging.debug('Wheat price for 1 unit is {}'.format(self.wheat_prices[-1]))
-    
+        logging.debug('Baker account {}$'.format(self.checking_account.balance))
     def buy_water(self, water_price, unit, quantity):
-        logging.debug('Baker can buy in {}{} for {}$ (total of {})'.format(quantity, unit, water_price, quantity * water_price))
+        logging.debug('Baker is buying in {}{} for {}$ (total of {})'.format(quantity, unit, water_price, quantity * water_price))
+        logging.debug('Baker account {}$'.format(self.checking_account.balance))
         self.water_stock += quantity
         self.checking_account.pay(self.age_day, quantity * water_price)
         self.water_prices.append(water_price)
+        logging.debug('Baker account {}$'.format(self.checking_account.balance))
 
     def sell_bread(self):
         to_get_on_account = self.price_limit - (self.price_limit * 0.055) - 1.15

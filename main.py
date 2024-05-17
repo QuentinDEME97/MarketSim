@@ -2,6 +2,9 @@ import matplotlib.pyplot as plt
 from models.resource import Resource
 from models.agent import Baker
 from constants.const import *
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def plot_prices():
     for _ in range(100):
@@ -42,6 +45,7 @@ def main():
     baker = Baker(money=1000, wheat_stock_capacity=1200)
     print(baker)
     for i in range(3):
+        logging.debug('=== period {} ==='.format(i))
         buying_unit, quantity = baker.can_or_should_buy_wheat(wheat_kg.sim_prices[i], wheat_t.sim_prices[i])
         wheat_price = wheat_t.sim_prices[i] if buying_unit == 't' else wheat_kg.sim_prices[i]
         baker.buy_wheat(wheat_price, buying_unit, quantity)
