@@ -39,25 +39,30 @@ def main():
     wheat_kg = Resource(name='Wheat(KG)', init_price=WHEAT_KG_PRICE) # grams
     wheat_t = Resource(name='Wheat(T)', init_price=WHEAT_T_PRICE)  # grams
     water = Resource(name='Water', init_price=WATER_PRICE) # Liter
-    baker = Baker(money=1000)
+    baker = Baker(money=1000, wheat_stock_capacity=1200)
     print(baker)
-    buying_unit, quantity = baker.can_or_should_buy_wheat(wheat_kg.sim_prices[0], wheat_t.sim_prices[0])
-    wheat_price = wheat_t.sim_prices[0] if buying_unit == 't' else wheat_kg.sim_prices[0]
-    baker.buy_wheat(wheat_price, buying_unit, quantity)
-    print(baker.checking_account)
-    # Water
-    buying_unit, quantity = baker.can_or_should_buy_water(water.sim_prices[0])
-    baker.buy_water(water.sim_prices[0], buying_unit, quantity)
-    print(baker)
-    print(baker.checking_account)
-    # Produce flour
-    baker.produce_flour()
-    # Produce Bread
-    bread_amount = baker.bread_stock.balance
-    print(baker)
-    baker.produce_bread()
-    print('Produced {} bread'.format(baker.bread_stock.balance - bread_amount))
-    print('Baker could get {}'.format(baker.bread_stock.balance*baker.price_limit))
-    print(baker)
+    for i in range(3):
+        buying_unit, quantity = baker.can_or_should_buy_wheat(wheat_kg.sim_prices[i], wheat_t.sim_prices[i])
+        wheat_price = wheat_t.sim_prices[i] if buying_unit == 't' else wheat_kg.sim_prices[i]
+        baker.buy_wheat(wheat_price, buying_unit, quantity)
+        print(baker.checking_account)
+        # Water
+        buying_unit, quantity = baker.can_or_should_buy_water(water.sim_prices[i])
+        baker.buy_water(water.sim_prices[i], buying_unit, quantity)
+        print(baker)
+        print(baker.checking_account)
+        # Produce flour
+        baker.produce_flour()
+        # Produce Bread
+        bread_amount = baker.bread_stock.balance
+        print(baker)
+        baker.produce_bread()
+        print('Produced {} bread'.format(baker.bread_stock.balance - bread_amount))
+        print('Baker could get {}'.format(baker.bread_stock.balance*baker.price_limit))
+        print(baker)
+        while baker.bread_stock.balance != 0:
+            baker.sell_bread()
+        print(baker)
+
 if __name__ == '__main__':
     main()

@@ -28,7 +28,21 @@ class QuantityManager:
         if period is None or amount is None:
             raise RuntimeError('Period and amound should not be None')
         self.balance -= amount
-        self.transactions.append((period, amount))
+        self.transactions.append((period, -amount))
+
+    def get_last_add(self):
+        last_positive = None
+        for period, amount in reversed(self.transactions):
+            if amount > 0:
+                last_positive = (period, amount)
+        return last_positive
+
+    def get_last_remove(self):
+        last_negative = None
+        for period, amount in reversed(self.transactions):
+            if amount < 0:
+                last_negative = (period, amount)
+        return last_negative
 
     def __repr__(self):
         return '{} balance: {}{} number_of_transactions: {}'.format(self.id, self.balance, self.unit, len(self.transactions))
@@ -321,21 +335,27 @@ class Baker(Seller):
         if self.flour_stock >= 0.500 and self.water_stock >= 0.300:
             # We can produce
             bread_to_produce = min(self.flour_stock // 0.500, self.water_stock // 0.300)
-            self.bread_stock.add_to_stock(1, bread_to_produce)
+            self.bread_stock.add_to_stock(self.age_day, bread_to_produce)
             self.flour_stock -= 0.500 * bread_to_produce
             self.water_stock -= 0.300 * bread_to_produce
-            # self.adjust_bread_price()
+            self.adjust_bread_price()
 
     def adjust_bread_price(self):
-        bread_price_production = (self.wheat_prices[-1] * 0.80) * 0.500 + self.water_prices[-1] * 0.300
-        new_price = (bread_price_production + (bread_price_production * 0.25) + (bread_price_production * 0.055) + 0.50) * 2
-        if new_price < self.price_limit:
-            if self.money[-1] > self.balance_at_last_price:
-                self.price_limit = new_price
-                self.last_price = new_price
-                self.balance_at_last_price = self.money[-1]
-        else:
-            self.price_limit = new_price
+        '''
+        Report the production price on the sell price.
+
+        We need to check how many bread we produce and for what price.
+        '''
+        last_bread_produced = self.bread_stock.get_last_add()[1]
+        production_cost = ((last_bread_produced * BREAD_FLOUR_NEEDED) / 0.80) * self.wheat_prices[-1] + (last_bread_produced * BREAD_WATER_NEEDED) * self.water_prices[-1]
+        logging.debug('Production cost total is {} and {} for 1'.format(production_cost, production_cost/last_bread_produced))
+        production_cost = (production_cost / last_bread_produced)
+        bread_price_ht = production_cost + production_cost * 0.25 + 1.15
+        bread_price_ttc = bread_price_ht + bread_price_ht * 0.055
+        logging.debug('The price is {}'.format(bread_price_ttc))
+        self.price_limit = bread_price_ttc
+
+
 
     def can_or_should_buy_wheat(self, wheat_price_kg, wheat_price_t):
         '''
@@ -347,8 +367,8 @@ class Baker(Seller):
         '''
         wheat_quantity_able_to_stock = self.wheat_stock_capacity - self.wheat_stock
         if self.has_capacity_to_buy_ton(wheat_price_t):
-            wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_t) / 1000
-            quantity = min(wheat_quantity_able_to_buy, wheat_quantity_able_to_stock)
+            wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_t)
+            quantity = min(wheat_quantity_able_to_buy, wheat_quantity_able_to_stock // 1000)
             unit = 't'
         else:
             wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_kg)
@@ -371,20 +391,27 @@ class Baker(Seller):
     
     def buy_wheat(self, wheat_price, unit, quantity):
         logging.debug('Baker can buy in {} ({}u for {}$)'.format(unit, quantity, wheat_price))
-        if unit == 't':
-            self.wheat_stock += quantity * 1000
-            self.checking_account.pay(1, quantity * wheat_price)
-        if unit == 'kg':
-            self.wheat_stock += quantity * WHEAT_MIN_KG_BUY_QUANTITY
-            self.checking_account.pay(1, quantity * wheat_price)
+        if quantity != 0:
+            if unit == 't':
+                self.wheat_stock += quantity * 1000
+                self.checking_account.pay(self.age_day, quantity * wheat_price)
+                self.wheat_prices.append(wheat_price / (quantity * 1000))
+            if unit == 'kg':
+                self.wheat_stock += quantity * WHEAT_MIN_KG_BUY_QUANTITY
+                self.checking_account.pay(self.age_day, quantity * wheat_price)
+                self.wheat_prices.append(wheat_price / (quantity * WHEAT_MIN_KG_BUY_QUANTITY))
+            logging.debug('Wheat price for 1 unit is {}'.format(self.wheat_prices[-1]))
     
     def buy_water(self, water_price, unit, quantity):
         logging.debug('Baker can buy in {}{} for {}$ (total of {})'.format(quantity, unit, water_price, quantity * water_price))
         self.water_stock += quantity
-        self.checking_account.pay(1, quantity * water_price)
+        self.checking_account.pay(self.age_day, quantity * water_price)
+        self.water_prices.append(water_price)
 
     def sell_bread(self):
-        self.checking_account.pay(self.price_limit)
+        to_get_on_account = self.price_limit - (self.price_limit * 0.055) - 1.15
+        self.checking_account.pay(self.age_day, to_get_on_account)
+        self.bread_stock.remove(self.age_day, 1)
 
     def __repr__(self):
         return 'Baker ({}) : {}w {}f {}wt {}$'.format(self.bread_stock.balance, self.wheat_stock, self.flour_stock, self.water_stock, self.checking_account.balance, self.price_limit)
