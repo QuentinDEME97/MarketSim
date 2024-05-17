@@ -367,8 +367,8 @@ class Baker(Seller):
         '''
         wheat_quantity_able_to_stock = self.wheat_stock_capacity - self.wheat_stock
         if self.has_capacity_to_buy_ton(wheat_price_t):
-            wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_t) / 1000
-            quantity = min(wheat_quantity_able_to_buy, wheat_quantity_able_to_stock)
+            wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_t)
+            quantity = min(wheat_quantity_able_to_buy, wheat_quantity_able_to_stock // 1000)
             unit = 't'
         else:
             wheat_quantity_able_to_buy = (self.checking_account.balance // wheat_price_kg)
@@ -395,7 +395,7 @@ class Baker(Seller):
             if unit == 't':
                 self.wheat_stock += quantity * 1000
                 self.checking_account.pay(self.age_day, quantity * wheat_price)
-                self.wheat_prices.append(wheat_price / quantity * 1000)
+                self.wheat_prices.append(wheat_price / (quantity * 1000))
             if unit == 'kg':
                 self.wheat_stock += quantity * WHEAT_MIN_KG_BUY_QUANTITY
                 self.checking_account.pay(self.age_day, quantity * wheat_price)
